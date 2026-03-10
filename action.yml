@@ -1,0 +1,99 @@
+name: 'PR Stats Analyzer'
+description: 'Analyze pull request statistics for a GitHub repository - cycle time, lead time, reviews, comments, and more'
+author: 'Your Name'
+
+branding:
+  icon: 'bar-chart-2'
+  color: 'purple'
+
+inputs:
+  repository:
+    description: 'Repository to analyze (owner/repo format). Defaults to current repository.'
+    required: false
+    default: ${{ github.repository }}
+  
+  days:
+    description: 'Number of days to look back for PRs'
+    required: false
+    default: '90'
+  
+  token:
+    description: 'GitHub token with repo access. Use secrets.GITHUB_TOKEN for public repos or a PAT for private repos.'
+    required: true
+    default: ${{ github.token }}
+  
+  output-path:
+    description: 'Directory to save the CSV report'
+    required: false
+    default: 'pr-stats-reports'
+
+outputs:
+  csv-file:
+    description: 'Path to the generated CSV file'
+    value: ${{ steps.analyze.outputs.csv-file }}
+  
+  total-prs:
+    description: 'Total number of PRs analyzed'
+    value: ${{ steps.analyze.outputs.total-prs }}
+  
+  merge-rate:
+    description: 'Percentage of PRs that were merged'
+    value: ${{ steps.analyze.outputs.merge-rate }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    
+    - name: Install dependencies
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npm ci --production
+    
+    - name: Run PR analysis
+      id: analyze
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+        INPUT_REPOSITORY: ${{ inputs.repository }}
+        INPUT_DAYS: ${{ inputs.days }}
+        INPUT_OUTPUT_PATH: ${{ inputs.output-path }}
+      run: |
+        # Create output directory
+        mkdir -p "$INPUT_OUTPUT_PATH"
+        
+        # Run the analysis
+        node "${{ github.action_path }}/src/index.js" "$INPUT_REPOSITORY"
+        
+        # Find and move the generated CSV
+        CSV_FILE=$(ls -t pr-stats-*.csv 2>/dev/null | head -1)
+        
+        if [ -n "$CSV_FILE" ]; then
+          mv "$CSV_FILE" "$INPUT_OUTPUT_PATH/"
+          FINAL_PATH="$INPUT_OUTPUT_PATH/$CSV_FILE"
+          
+          # Count PRs (lines minus header)
+          TOTAL_PRS=$(($(wc -l < "$FINAL_PATH") - 1))
+          
+          # Calculate merge rate
+          MERGED=$(grep -c ",Merged," "$FINAL_PATH" || echo 0)
+          if [ "$TOTAL_PRS" -gt 0 ]; then
+            MERGE_RATE=$(echo "scale=1; $MERGED * 100 / $TOTAL_PRS" | bc)
+          else
+            MERGE_RATE="0"
+          fi
+          
+          echo "csv-file=$FINAL_PATH" >> $GITHUB_OUTPUT
+          echo "total-prs=$TOTAL_PRS" >> $GITHUB_OUTPUT
+          echo "merge-rate=$MERGE_RATE" >> $GITHUB_OUTPUT
+          
+          echo "✅ Generated: $FINAL_PATH"
+          echo "📊 Total PRs: $TOTAL_PRS"
+          echo "🔀 Merge Rate: $MERGE_RATE%"
+        else
+          echo "❌ No CSV file generated"
+          exit 1
+        fi
