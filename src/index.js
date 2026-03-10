@@ -666,9 +666,10 @@ function escapeCSV(value) {
  * @param {object} aggregate - Aggregated statistics
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
+ * @param {number} daysBack - Number of days analyzed
  * @returns {string} - HTML content
  */
-function generateHTML(prStats, aggregate, owner, repo) {
+function generateHTML(prStats, aggregate, owner, repo, daysBack = 7) {
   const sortedPRs = [...prStats].sort((a, b) => b.number - a.number);
   const reportDate = new Date().toLocaleDateString('en-US', { 
     year: 'numeric', 
@@ -1177,7 +1178,7 @@ function generateHTML(prStats, aggregate, owner, repo) {
       <div class="stat-card blue">
         <div class="label">Total PRs</div>
         <div class="value">${aggregate.total}</div>
-        <div class="subtext">Last 90 days</div>
+        <div class="subtext">Last ${daysBack} days</div>
       </div>
       <div class="stat-card green">
         <div class="label">Merged</div>
@@ -1635,11 +1636,11 @@ async function main() {
   // Get repository URL from command line argument
   const repoUrl = process.argv[2];
   if (!repoUrl) {
-    console.error('Usage: npm start <repository-url>');
+    console.error('Usage: npm start <repository-url> [days]');
     console.error('');
     console.error('Examples:');
-    console.error('  npm start https://github.com/owner/repo');
-    console.error('  npm start owner/repo');
+    console.error('  npm start https://github.com/owner/repo       # Last 7 days (default)');
+    console.error('  npm start owner/repo 30                       # Last 30 days');
     process.exit(1);
   }
 
@@ -1655,6 +1656,9 @@ async function main() {
 
   const { owner, repo } = parsed;
 
+  // Get days to look back (from env var, command line, or default to 7)
+  const daysBack = parseInt(process.env.INPUT_DAYS || process.argv[3] || '7', 10);
+
   // Initialize GitHub client
   const client = new GitHubGraphQLClient(token);
 
@@ -1667,7 +1671,7 @@ async function main() {
 
     // Fetch all closed/merged PRs
     console.log('📥 Fetching all closed and merged pull requests...\n');
-    const prs = await client.getAllClosedMergedPRs(owner, repo);
+    const prs = await client.getAllClosedMergedPRs(owner, repo, daysBack);
     console.log(`\n✅ Fetched ${prs.length} pull requests\n`);
 
     if (prs.length === 0) {
@@ -1689,7 +1693,7 @@ async function main() {
     console.log(`\n✅ CSV file saved: ${csvFilename}`);
 
     // Generate HTML report
-    const html = generateHTML(prStats, aggregate, owner, repo);
+    const html = generateHTML(prStats, aggregate, owner, repo, daysBack);
     const htmlFilename = `pr-stats-${owner}-${repo}-${new Date().toISOString().split('T')[0]}.html`;
     await fs.writeFile(htmlFilename, html, 'utf-8');
     console.log(`✅ HTML report saved: ${htmlFilename}`);

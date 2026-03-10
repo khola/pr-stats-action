@@ -5,7 +5,7 @@ author: 'Your Name'
 branding:
   icon: 'bar-chart-2'
   color: 'purple'
-
+  
 inputs:
   repository:
     description: 'Repository to analyze (owner/repo format). Defaults to current repository.'
@@ -15,7 +15,7 @@ inputs:
   days:
     description: 'Number of days to look back for PRs'
     required: false
-    default: '90'
+    default: '7'
   
   token:
     description: 'GitHub token with repo access. Use secrets.GITHUB_TOKEN for public repos or a PAT for private repos.'

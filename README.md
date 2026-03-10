@@ -55,7 +55,7 @@ jobs:
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
 | `repository` | Repository to analyze (`owner/repo`) | No | Current repo |
-| `days` | Number of days to look back | No | `90` |
+| `days` | Number of days to look back | No | `7` |
 | `token` | GitHub token | Yes | `github.token` |
 | `output-path` | Directory for CSV output | No | `pr-stats-reports` |
 
@@ -143,8 +143,11 @@ npm install
 # Create .env file
 echo "GITHUB_TOKEN=your_token_here" > .env
 
-# Run analysis
+# Run analysis (default: last 7 days)
 npm start owner/repo
+
+# Or specify days to look back
+npm start owner/repo 30
 ```
 
 ### Output
