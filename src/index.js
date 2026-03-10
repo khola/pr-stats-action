@@ -661,6 +661,837 @@ function escapeCSV(value) {
 }
 
 /**
+ * Generate HTML report content from PR stats
+ * @param {Array} prStats - Individual PR statistics
+ * @param {object} aggregate - Aggregated statistics
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @returns {string} - HTML content
+ */
+function generateHTML(prStats, aggregate, owner, repo) {
+  const sortedPRs = [...prStats].sort((a, b) => b.number - a.number);
+  const reportDate = new Date().toLocaleDateString('en-US', { 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+
+  // Prepare chart data
+  const authorData = aggregate.authors?.topContributors || [];
+  const cycleTimeByWeek = calculateWeeklyStats(sortedPRs, 'cycleTimeHours');
+  const prsByWeek = calculateWeeklyPRCount(sortedPRs);
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PR Stats Report - ${owner}/${repo}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0d1117;
+      --bg-secondary: #161b22;
+      --bg-tertiary: #21262d;
+      --bg-card: #1c2128;
+      --border-primary: #30363d;
+      --border-accent: #388bfd;
+      --text-primary: #e6edf3;
+      --text-secondary: #8b949e;
+      --text-muted: #6e7681;
+      --accent-blue: #58a6ff;
+      --accent-green: #3fb950;
+      --accent-purple: #a371f7;
+      --accent-orange: #d29922;
+      --accent-red: #f85149;
+      --accent-pink: #db61a2;
+      --accent-cyan: #39c5cf;
+      --gradient-1: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      --gradient-2: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      --gradient-3: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+      --gradient-4: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, rgba(88, 166, 255, 0.1) 0%, rgba(163, 113, 247, 0.1) 100%);
+      border: 1px solid var(--border-primary);
+      border-radius: 16px;
+      padding: 2.5rem;
+      margin-bottom: 2rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .header::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--gradient-1);
+    }
+
+    .header h1 {
+      font-size: 2.25rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .header .repo-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.1rem;
+      color: var(--text-secondary);
+      margin-bottom: 0.5rem;
+    }
+
+    .header .report-date {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-primary);
+      border-radius: 12px;
+      padding: 1.5rem;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--border-accent);
+    }
+
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 4px;
+      height: 100%;
+    }
+
+    .stat-card.blue::before { background: var(--accent-blue); }
+    .stat-card.green::before { background: var(--accent-green); }
+    .stat-card.purple::before { background: var(--accent-purple); }
+    .stat-card.orange::before { background: var(--accent-orange); }
+    .stat-card.pink::before { background: var(--accent-pink); }
+    .stat-card.cyan::before { background: var(--accent-cyan); }
+
+    .stat-card .label {
+      font-size: 0.75rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .stat-card .value {
+      font-size: 2rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .stat-card.blue .value { color: var(--accent-blue); }
+    .stat-card.green .value { color: var(--accent-green); }
+    .stat-card.purple .value { color: var(--accent-purple); }
+    .stat-card.orange .value { color: var(--accent-orange); }
+    .stat-card.pink .value { color: var(--accent-pink); }
+    .stat-card.cyan .value { color: var(--accent-cyan); }
+
+    .stat-card .subtext {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      margin-top: 0.25rem;
+    }
+
+    /* Section */
+    .section {
+      background: var(--bg-card);
+      border: 1px solid var(--border-primary);
+      border-radius: 12px;
+      margin-bottom: 2rem;
+      overflow: hidden;
+    }
+
+    .section-header {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--border-primary);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .section-header h2 {
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    .section-header .icon {
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-tertiary);
+      border-radius: 6px;
+      font-size: 0.875rem;
+    }
+
+    .section-content {
+      padding: 1.5rem;
+    }
+
+    /* Charts Row */
+    .charts-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+      gap: 2rem;
+    }
+
+    .chart-container {
+      background: var(--bg-secondary);
+      border-radius: 8px;
+      padding: 1.5rem;
+    }
+
+    .chart-title {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-bottom: 1rem;
+    }
+
+    /* Bar Chart */
+    .bar-chart {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .bar-item {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .bar-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      min-width: 100px;
+      text-align: right;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .bar-track {
+      flex: 1;
+      height: 24px;
+      background: var(--bg-tertiary);
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.5s ease;
+      display: flex;
+      align-items: center;
+      padding-left: 0.5rem;
+    }
+
+    .bar-fill span {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--bg-primary);
+    }
+
+    .bar-fill.gradient-1 { background: var(--gradient-1); }
+    .bar-fill.gradient-2 { background: var(--gradient-2); }
+    .bar-fill.gradient-3 { background: var(--gradient-3); }
+    .bar-fill.gradient-4 { background: var(--gradient-4); }
+
+    /* Metrics Grid */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .metric-group {
+      background: var(--bg-secondary);
+      border-radius: 8px;
+      padding: 1.25rem;
+    }
+
+    .metric-group-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--border-primary);
+    }
+
+    .metric-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5rem 0;
+    }
+
+    .metric-row:not(:last-child) {
+      border-bottom: 1px dashed var(--border-primary);
+    }
+
+    .metric-name {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+    }
+
+    .metric-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    /* Table */
+    .table-container {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+
+    thead {
+      background: var(--bg-secondary);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    th {
+      padding: 1rem;
+      text-align: left;
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border-primary);
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 0.875rem 1rem;
+      border-bottom: 1px solid var(--border-primary);
+      vertical-align: middle;
+    }
+
+    tbody tr:hover {
+      background: rgba(88, 166, 255, 0.05);
+    }
+
+    .pr-number {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      color: var(--accent-blue);
+    }
+
+    .pr-title {
+      max-width: 300px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .pr-title a {
+      color: var(--text-primary);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .pr-title a:hover {
+      color: var(--accent-blue);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+
+    .badge.merged {
+      background: rgba(63, 185, 80, 0.15);
+      color: var(--accent-green);
+    }
+
+    .badge.closed {
+      background: rgba(248, 81, 73, 0.15);
+      color: var(--accent-red);
+    }
+
+    .author {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+    }
+
+    .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .text-green { color: var(--accent-green); }
+    .text-red { color: var(--accent-red); }
+    .text-muted { color: var(--text-muted); }
+    .text-secondary { color: var(--text-secondary); }
+
+    /* Sparkline */
+    .sparkline {
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+      height: 40px;
+      padding: 0.5rem 0;
+    }
+
+    .sparkline-bar {
+      flex: 1;
+      min-width: 20px;
+      max-width: 40px;
+      background: var(--gradient-3);
+      border-radius: 2px 2px 0 0;
+      transition: opacity 0.2s;
+    }
+
+    .sparkline-bar:hover {
+      opacity: 0.8;
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      padding: 2rem;
+      color: var(--text-muted);
+      font-size: 0.875rem;
+    }
+
+    .footer a {
+      color: var(--accent-blue);
+      text-decoration: none;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .container {
+        padding: 1rem;
+      }
+
+      .header {
+        padding: 1.5rem;
+      }
+
+      .header h1 {
+        font-size: 1.5rem;
+      }
+
+      .charts-row {
+        grid-template-columns: 1fr;
+      }
+
+      .table-container {
+        font-size: 0.8rem;
+      }
+
+      th, td {
+        padding: 0.5rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>Pull Request Statistics</h1>
+      <div class="repo-name">📦 ${owner}/${repo}</div>
+      <div class="report-date">Generated on ${reportDate}</div>
+    </header>
+
+    <div class="stats-grid">
+      <div class="stat-card blue">
+        <div class="label">Total PRs</div>
+        <div class="value">${aggregate.total}</div>
+        <div class="subtext">Last 90 days</div>
+      </div>
+      <div class="stat-card green">
+        <div class="label">Merged</div>
+        <div class="value">${aggregate.merged}</div>
+        <div class="subtext">${aggregate.mergedPercentage}% merge rate</div>
+      </div>
+      <div class="stat-card purple">
+        <div class="label">Avg Cycle Time</div>
+        <div class="value">${aggregate.cycleTime?.averageDays || '—'}</div>
+        <div class="subtext">days to merge</div>
+      </div>
+      <div class="stat-card orange">
+        <div class="label">Avg Lead Time</div>
+        <div class="value">${aggregate.leadTime?.averageDays || '—'}</div>
+        <div class="subtext">days from first commit</div>
+      </div>
+      <div class="stat-card pink">
+        <div class="label">Time to Review</div>
+        <div class="value">${aggregate.timeToFirstReview?.averageDays || '—'}</div>
+        <div class="subtext">days average</div>
+      </div>
+      <div class="stat-card cyan">
+        <div class="label">Contributors</div>
+        <div class="value">${aggregate.authors?.unique || 0}</div>
+        <div class="subtext">unique authors</div>
+      </div>
+    </div>
+
+    <section class="section">
+      <div class="section-header">
+        <span class="icon">📊</span>
+        <h2>Overview & Trends</h2>
+      </div>
+      <div class="section-content">
+        <div class="charts-row">
+          <div class="chart-container">
+            <div class="chart-title">Top Contributors by PR Count</div>
+            <div class="bar-chart">
+              ${authorData.slice(0, 8).map((author, i) => {
+                const maxPRs = Math.max(...authorData.map(a => a.prs));
+                const width = (author.prs / maxPRs * 100).toFixed(1);
+                const gradients = ['gradient-1', 'gradient-3', 'gradient-4', 'gradient-2'];
+                return `
+              <div class="bar-item">
+                <div class="bar-label">${author.name}</div>
+                <div class="bar-track">
+                  <div class="bar-fill ${gradients[i % gradients.length]}" style="width: ${width}%">
+                    <span>${author.prs}</span>
+                  </div>
+                </div>
+              </div>`;
+              }).join('')}
+            </div>
+          </div>
+          <div class="chart-container">
+            <div class="chart-title">PRs Merged Per Week (Last 12 Weeks)</div>
+            <div class="sparkline">
+              ${prsByWeek.map(count => {
+                const maxCount = Math.max(...prsByWeek, 1);
+                const height = Math.max((count / maxCount * 100), 5);
+                return `<div class="sparkline-bar" style="height: ${height}%" title="${count} PRs"></div>`;
+              }).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <span class="icon">⏱️</span>
+        <h2>Timing Metrics</h2>
+      </div>
+      <div class="section-content">
+        <div class="metrics-grid">
+          <div class="metric-group">
+            <div class="metric-group-title">Cycle Time (PR Open → Merge)</div>
+            <div class="metric-row">
+              <span class="metric-name">Average</span>
+              <span class="metric-value">${aggregate.cycleTime?.averageDays || '—'} days</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-name">Median</span>
+              <span class="metric-value">${aggregate.cycleTime?.medianHours ? (aggregate.cycleTime.medianHours / 24).toFixed(2) : '—'} days</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-name">Fastest</span>
+              <span class="metric-value">${aggregate.cycleTime?.minHours ? (aggregate.cycleTime.minHours / 24).toFixed(2) : '—'} days</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-name">Slowest</span>
+              <span class="metric-value">${aggregate.cycleTime?.maxHours ? (aggregate.cycleTime.maxHours / 24).toFixed(2) : '—'} days</span>
+            </div>
+          </div>
+          <div class="metric-group">
+            <div class="metric-group-title">Lead Time (First Commit → Merge)</div>
+            <div class="metric-row">
+              <span class="metric-name">Average</span>
+              <span class="metric-value">${aggregate.leadTime?.averageDays || '—'} days</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-name">Median</span>
+              <span class="metric-value">${aggregate.leadTime?.medianHours ? (aggregate.leadTime.medianHours / 24).toFixed(2) : '—'} days</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-name">Fastest</span>
+              <span class="metric-value">${aggregate.leadTime?.minHours ? (aggregate.leadTime.minHours / 24).toFixed(2) : '—'} days</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-name">Slowest</span>
+              <span class="metric-value">${aggregate.leadTime?.maxHours ? (aggregate.leadTime.maxHours / 24).toFixed(2) : '—'} days</span>
+            </div>
+          </div>
+          <div class="metric-group">
+            <div class="metric-group-title">Review Timing</div>
+            <div class="metric-row">
+              <span class="metric-name">Time to First Review</span>
+              <span class="metric-value">${aggregate.timeToFirstReview?.averageDays || '—'} days</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-name">Time to Approval</span>
+              <span class="metric-value">${aggregate.timeToApproval?.averageDays || '—'} days</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <span class="icon">💬</span>
+        <h2>Review & Code Metrics</h2>
+      </div>
+      <div class="section-content">
+        <div class="metrics-grid">
+          <div class="metric-group">
+            <div class="metric-group-title">Review Activity</div>
+            <div class="metric-row">
+              <span class="metric-name">Total Reviews</span>
+              <span class="metric-value">${aggregate.reviews?.total || 0}</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-name">Avg per PR</span>
+              <span class="metric-value">${aggregate.reviews?.averagePerPR || 0}</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-name">Total Approvals</span>
+              <span class="metric-value">${aggregate.reviews?.totalApprovals || 0}</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-name">Changes Requested</span>
+              <span class="metric-value">${aggregate.reviews?.totalChangesRequested || 0}</span>
+            </div>
+          </div>
+          <div class="metric-group">
+            <div class="metric-group-title">Comments</div>
+            <div class="metric-row">
+              <span class="metric-name">Total Comments</span>
+              <span class="metric-value">${aggregate.comments?.total || 0}</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-name">Avg per PR</span>
+              <span class="metric-value">${aggregate.comments?.averagePerPR || 0}</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-name">Inline Comments</span>
+              <span class="metric-value">${aggregate.comments?.inlineComments || 0}</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-name">Review Threads</span>
+              <span class="metric-value">${aggregate.comments?.reviewThreads || 0}</span>
+            </div>
+          </div>
+          <div class="metric-group">
+            <div class="metric-group-title">Code Changes</div>
+            <div class="metric-row">
+              <span class="metric-name">Total Additions</span>
+              <span class="metric-value text-green">+${(aggregate.changes?.totalAdditions || 0).toLocaleString()}</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-name">Total Deletions</span>
+              <span class="metric-value text-red">-${(aggregate.changes?.totalDeletions || 0).toLocaleString()}</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-name">Avg Files Changed</span>
+              <span class="metric-value">${aggregate.changes?.averageChangedFiles || 0}</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-name">Total Commits</span>
+              <span class="metric-value">${aggregate.commits?.totalCommits || 0}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <span class="icon">📋</span>
+        <h2>All Pull Requests</h2>
+      </div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Title</th>
+              <th>Author</th>
+              <th>Status</th>
+              <th>Cycle Time</th>
+              <th>Reviews</th>
+              <th>Comments</th>
+              <th>Changes</th>
+              <th>Merged/Closed</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${sortedPRs.map(pr => `
+            <tr>
+              <td class="pr-number">#${pr.number}</td>
+              <td class="pr-title"><a href="${pr.url}" target="_blank" rel="noopener">${escapeHTML(pr.title)}</a></td>
+              <td class="author">@${pr.author}</td>
+              <td><span class="badge ${pr.merged ? 'merged' : 'closed'}">${pr.merged ? '✓ Merged' : '✕ Closed'}</span></td>
+              <td class="mono text-secondary">${pr.cycleTimeDays ? pr.cycleTimeDays + 'd' : '—'}</td>
+              <td class="mono text-secondary">${pr.totalReviews || 0}</td>
+              <td class="mono text-secondary">${pr.totalComments || 0}</td>
+              <td class="mono"><span class="text-green">+${pr.additions}</span> <span class="text-red">-${pr.deletions}</span></td>
+              <td class="mono text-muted">${formatDate(pr.mergedAt || pr.closedAt)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <p>Generated by <a href="https://github.com/pr-stats-action">PR Stats Action</a></p>
+    </footer>
+  </div>
+</body>
+</html>`;
+}
+
+/**
+ * Escape HTML special characters
+ * @param {string} str - String to escape
+ * @returns {string} - Escaped string
+ */
+function escapeHTML(str) {
+  if (!str) return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/**
+ * Format date for display
+ * @param {string} dateStr - ISO date string
+ * @returns {string} - Formatted date
+ */
+function formatDate(dateStr) {
+  if (!dateStr) return '—';
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+/**
+ * Calculate weekly PR counts for sparkline
+ * @param {Array} prs - PR statistics
+ * @returns {Array} - Weekly counts (12 weeks)
+ */
+function calculateWeeklyPRCount(prs) {
+  const weeks = Array(12).fill(0);
+  const now = new Date();
+  
+  prs.forEach(pr => {
+    const mergedAt = pr.mergedAt ? new Date(pr.mergedAt) : null;
+    if (mergedAt) {
+      const weeksAgo = Math.floor((now - mergedAt) / (7 * 24 * 60 * 60 * 1000));
+      if (weeksAgo >= 0 && weeksAgo < 12) {
+        weeks[11 - weeksAgo]++;
+      }
+    }
+  });
+  
+  return weeks;
+}
+
+/**
+ * Calculate weekly stats for a metric
+ * @param {Array} prs - PR statistics
+ * @param {string} metric - Metric name
+ * @returns {Array} - Weekly averages
+ */
+function calculateWeeklyStats(prs, metric) {
+  const weeks = Array(12).fill(null).map(() => []);
+  const now = new Date();
+  
+  prs.forEach(pr => {
+    const mergedAt = pr.mergedAt ? new Date(pr.mergedAt) : null;
+    if (mergedAt && pr[metric]) {
+      const weeksAgo = Math.floor((now - mergedAt) / (7 * 24 * 60 * 60 * 1000));
+      if (weeksAgo >= 0 && weeksAgo < 12) {
+        weeks[11 - weeksAgo].push(pr[metric]);
+      }
+    }
+  });
+  
+  return weeks.map(w => w.length ? (w.reduce((a, b) => a + b, 0) / w.length) : 0);
+}
+
+/**
  * Generate CSV content from PR stats
  * @param {Array} prStats - Individual PR statistics
  * @returns {string} - CSV content
@@ -848,14 +1679,21 @@ async function main() {
     console.log('📊 Calculating statistics...');
     const prStats = prs.map(pr => calculatePRStats(pr));
 
+    // Calculate aggregate statistics
+    const aggregate = aggregateStats(prStats);
+
     // Generate CSV
     const csv = generateCSV(prStats);
+    const csvFilename = `pr-stats-${owner}-${repo}-${new Date().toISOString().split('T')[0]}.csv`;
+    await fs.writeFile(csvFilename, csv, 'utf-8');
+    console.log(`\n✅ CSV file saved: ${csvFilename}`);
 
-    // Save to file
-    const filename = `pr-stats-${owner}-${repo}-${new Date().toISOString().split('T')[0]}.csv`;
-    await fs.writeFile(filename, csv, 'utf-8');
+    // Generate HTML report
+    const html = generateHTML(prStats, aggregate, owner, repo);
+    const htmlFilename = `pr-stats-${owner}-${repo}-${new Date().toISOString().split('T')[0]}.html`;
+    await fs.writeFile(htmlFilename, html, 'utf-8');
+    console.log(`✅ HTML report saved: ${htmlFilename}`);
     
-    console.log(`\n✅ CSV file saved: ${filename}`);
     console.log(`📊 Contains ${prStats.length} PRs with detailed statistics\n`);
 
   } catch (error) {

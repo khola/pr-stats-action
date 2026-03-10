@@ -45,7 +45,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pr-stats
-          path: pr-stats-reports/*.csv
+          path: |
+            pr-stats-reports/*.csv
+            pr-stats-reports/*.html
 ```
 
 ### Inputs
@@ -62,6 +64,7 @@ jobs:
 | Output | Description |
 |--------|-------------|
 | `csv-file` | Path to generated CSV file |
+| `html-file` | Path to generated HTML report |
 | `total-prs` | Number of PRs analyzed |
 | `merge-rate` | Percentage of merged PRs |
 
@@ -146,7 +149,10 @@ npm start owner/repo
 
 ### Output
 
-The tool generates a CSV file with detailed stats for each PR:
+The tool generates two files:
+
+#### 📄 CSV File
+A detailed spreadsheet with stats for each PR:
 
 | Column | Description |
 |--------|-------------|
@@ -163,15 +169,18 @@ The tool generates a CSV file with detailed stats for each PR:
 | Additions/Deletions | Lines changed |
 | ... | And more! |
 
-## Visualize Results
+#### 📊 HTML Report
+A beautiful, self-contained HTML report with:
 
-Open `visualize.html` in your browser and load the CSV file for interactive charts:
+- **Summary cards** — Key metrics at a glance (total PRs, merge rate, avg cycle time)
+- **Top contributors** — Bar chart of most active authors
+- **Weekly trends** — Sparkline showing PR activity over time
+- **Timing metrics** — Cycle time, lead time, review timing breakdowns
+- **Review metrics** — Comments, reviews, approvals, changes requested
+- **Code metrics** — Additions, deletions, files changed
+- **Full PR table** — Searchable list of all analyzed PRs
 
-- Cycle/Lead time distributions
-- PRs by author
-- Code changes per PR
-- Timeline view
-- And more!
+The HTML file is completely self-contained with embedded data and styling — just open it in any browser!
 
 ## Token Permissions
 
