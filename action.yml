@@ -28,7 +28,7 @@ inputs:
     default: 'pr-stats-reports'
 
   exclude-contributors:
-    description: 'Comma-separated GitHub usernames to omit from contributor stats (unique count and top contributors chart). Does not remove PRs from the CSV/HTML.'
+    description: 'Comma-separated GitHub usernames whose PRs are omitted from CSV, HTML, and aggregates. Matches bot logins (e.g. github-actions[bot] when you list github-actions). Empty disables filtering.'
     required: false
     default: 'github-actions'
 

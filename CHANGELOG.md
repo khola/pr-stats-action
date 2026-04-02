@@ -4,7 +4,11 @@
 
 ### Added
 
-- **`exclude-contributors` input** — Comma-separated GitHub usernames to omit from contributor stats (unique author count and top contributors chart in the HTML report). Defaults to `github-actions`. Use an empty value to include everyone. Individual PR rows in the CSV and HTML table are unchanged.
+- **`exclude-contributors` input** — Comma-separated GitHub usernames whose PRs are dropped from the CSV, HTML report, and all aggregates. Defaults to `github-actions`. Use an empty value to disable filtering.
+
+### Fixed
+
+- Match GitHub’s bot login form (`github-actions[bot]`, etc.) when excluding, so automation PRs are actually removed from reports.
 
 ## v1.0.1 (2026-04-02)
 

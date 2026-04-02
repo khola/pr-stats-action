@@ -516,9 +516,24 @@ function calculatePRStats(pr) {
 }
 
 /**
- * Parse comma-separated contributor logins to exclude from contributor metrics (case-insensitive).
+ * Normalize a GitHub login for comparisons. Bot accounts use a "[bot]" suffix in the API
+ * (e.g. github-actions[bot]) while users type "github-actions" in config.
+ * @param {string} login
+ * @returns {string}
+ */
+function normalizeLoginForExclude(login) {
+  if (!login) return '';
+  return String(login)
+    .trim()
+    .replace(/^@/, '')
+    .toLowerCase()
+    .replace(/\[bot\]$/i, '');
+}
+
+/**
+ * Parse comma-separated contributor logins to exclude (case-insensitive, matches …[bot] too).
  * @param {string|undefined} raw - From INPUT_EXCLUDE_CONTRIBUTORS or EXCLUDE_CONTRIBUTORS
- * @returns {Set<string>} - Lowercase logins to skip
+ * @returns {Set<string>} - Normalized logins to skip
  */
 function parseExcludeContributors(raw) {
   if (raw == null || String(raw).trim() === '') {
@@ -527,9 +542,19 @@ function parseExcludeContributors(raw) {
   return new Set(
     String(raw)
       .split(',')
-      .map((s) => s.trim().toLowerCase())
+      .map((s) => normalizeLoginForExclude(s))
       .filter(Boolean)
   );
+}
+
+/**
+ * @param {string} authorLogin - PR author from GraphQL (e.g. github-actions[bot])
+ * @param {Set<string>} excludeAuthors - normalized logins
+ */
+function isAuthorExcluded(authorLogin, excludeAuthors) {
+  if (!excludeAuthors || excludeAuthors.size === 0) return false;
+  const key = normalizeLoginForExclude(authorLogin || 'unknown');
+  return excludeAuthors.has(key);
 }
 
 /**
@@ -549,11 +574,19 @@ function getExcludeContributorsRaw() {
  * Aggregate statistics across all PRs
  * @param {Array} prStats - Array of PR statistics
  * @param {object} [options]
- * @param {Set<string>} [options.excludeAuthors] - Lowercase logins omitted from contributor breakdown only
  * @returns {object} - Aggregated statistics
  */
-function aggregateStats(prStats, options = {}) {
-  const excludeAuthors = options.excludeAuthors || new Set();
+function aggregateStats(prStats) {
+  if (!prStats || prStats.length === 0) {
+    return {
+      total: 0,
+      merged: 0,
+      closed: 0,
+      mergedPercentage: '0.00',
+      authors: { unique: 0, topContributors: [] },
+    };
+  }
+
   const merged = prStats.filter(p => p.merged);
   const closed = prStats.filter(p => !p.merged && p.state === 'CLOSED');
 
@@ -660,11 +693,9 @@ function aggregateStats(prStats, options = {}) {
     };
   }
 
-  // Authors (optional exclusions for bots / automation accounts)
+  // Authors (PR list is already filtered when exclusions are enabled)
   const authors = {};
   prStats.forEach(p => {
-    const login = (p.author || 'unknown').toLowerCase();
-    if (excludeAuthors.has(login)) return;
     authors[p.author] = (authors[p.author] || 0) + 1;
   });
   aggregate.authors = {
@@ -1716,15 +1747,23 @@ async function main() {
 
     // Calculate statistics for each PR
     console.log('📊 Calculating statistics...');
-    const prStats = prs.map(pr => calculatePRStats(pr));
+    let prStats = prs.map(pr => calculatePRStats(pr));
 
     const excludeAuthors = parseExcludeContributors(getExcludeContributorsRaw());
     if (excludeAuthors.size > 0) {
-      console.log(`Contributor stats omitting: ${[...excludeAuthors].join(', ')}\n`);
+      const before = prStats.length;
+      prStats = prStats.filter((p) => !isAuthorExcluded(p.author, excludeAuthors));
+      console.log(
+        `Excluding PRs from: ${[...excludeAuthors].join(', ')} (${before} → ${prStats.length} PRs)\n`
+      );
+    }
+
+    if (prStats.length === 0) {
+      console.log('No pull requests left after applying exclude-contributors filters.\n');
     }
 
     // Calculate aggregate statistics
-    const aggregate = aggregateStats(prStats, { excludeAuthors });
+    const aggregate = aggregateStats(prStats);
 
     // Generate CSV
     const csv = generateCSV(prStats);
