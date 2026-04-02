@@ -516,11 +516,44 @@ function calculatePRStats(pr) {
 }
 
 /**
+ * Parse comma-separated contributor logins to exclude from contributor metrics (case-insensitive).
+ * @param {string|undefined} raw - From INPUT_EXCLUDE_CONTRIBUTORS or EXCLUDE_CONTRIBUTORS
+ * @returns {Set<string>} - Lowercase logins to skip
+ */
+function parseExcludeContributors(raw) {
+  if (raw == null || String(raw).trim() === '') {
+    return new Set();
+  }
+  return new Set(
+    String(raw)
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+/**
+ * Resolve exclude-contributors string: action input, then env, then default for bots.
+ */
+function getExcludeContributorsRaw() {
+  if (process.env.INPUT_EXCLUDE_CONTRIBUTORS !== undefined) {
+    return process.env.INPUT_EXCLUDE_CONTRIBUTORS;
+  }
+  if (process.env.EXCLUDE_CONTRIBUTORS !== undefined) {
+    return process.env.EXCLUDE_CONTRIBUTORS;
+  }
+  return 'github-actions';
+}
+
+/**
  * Aggregate statistics across all PRs
  * @param {Array} prStats - Array of PR statistics
+ * @param {object} [options]
+ * @param {Set<string>} [options.excludeAuthors] - Lowercase logins omitted from contributor breakdown only
  * @returns {object} - Aggregated statistics
  */
-function aggregateStats(prStats) {
+function aggregateStats(prStats, options = {}) {
+  const excludeAuthors = options.excludeAuthors || new Set();
   const merged = prStats.filter(p => p.merged);
   const closed = prStats.filter(p => !p.merged && p.state === 'CLOSED');
 
@@ -627,9 +660,11 @@ function aggregateStats(prStats) {
     };
   }
 
-  // Authors
+  // Authors (optional exclusions for bots / automation accounts)
   const authors = {};
   prStats.forEach(p => {
+    const login = (p.author || 'unknown').toLowerCase();
+    if (excludeAuthors.has(login)) return;
     authors[p.author] = (authors[p.author] || 0) + 1;
   });
   aggregate.authors = {
@@ -1683,8 +1718,13 @@ async function main() {
     console.log('📊 Calculating statistics...');
     const prStats = prs.map(pr => calculatePRStats(pr));
 
+    const excludeAuthors = parseExcludeContributors(getExcludeContributorsRaw());
+    if (excludeAuthors.size > 0) {
+      console.log(`Contributor stats omitting: ${[...excludeAuthors].join(', ')}\n`);
+    }
+
     // Calculate aggregate statistics
-    const aggregate = aggregateStats(prStats);
+    const aggregate = aggregateStats(prStats, { excludeAuthors });
 
     // Generate CSV
     const csv = generateCSV(prStats);

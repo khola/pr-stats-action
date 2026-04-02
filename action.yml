@@ -27,6 +27,11 @@ inputs:
     required: false
     default: 'pr-stats-reports'
 
+  exclude-contributors:
+    description: 'Comma-separated GitHub usernames to omit from contributor stats (unique count and top contributors chart). Does not remove PRs from the CSV/HTML.'
+    required: false
+    default: 'github-actions'
+
 outputs:
   csv-file:
     description: 'Path to the generated CSV file'
@@ -61,6 +66,7 @@ runs:
         INPUT_REPOSITORY: ${{ inputs.repository }}
         INPUT_DAYS: ${{ inputs.days }}
         INPUT_OUTPUT_PATH: ${{ inputs.output-path }}
+        INPUT_EXCLUDE_CONTRIBUTORS: ${{ inputs.exclude-contributors }}
       run: |
         # Create output directory
         mkdir -p "$INPUT_OUTPUT_PATH"
