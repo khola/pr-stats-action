@@ -81,7 +81,9 @@ runs:
           # Calculate merge rate
           MERGED=$(grep -c ",Merged," "$FINAL_PATH" || echo 0)
           if [ "$TOTAL_PRS" -gt 0 ]; then
-            MERGE_RATE=$(echo "scale=1; $MERGED * 100 / $TOTAL_PRS" | bc)
+            # One decimal place, no bc (not installed on all runners)
+            TENTHS=$((MERGED * 1000 / TOTAL_PRS))
+            MERGE_RATE="$((TENTHS / 10)).$((TENTHS % 10))"
           else
             MERGE_RATE="0"
           fi
